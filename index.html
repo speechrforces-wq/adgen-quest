@@ -156,7 +156,41 @@ function analysisPanel(c){
  const a=evaluateCompany(c);
  return '<div class="item" style="border:1px solid #436087;border-radius:12px;padding:13px;margin:12px 0"><h3>🧠 Анализ пригодности</h3><p><b>'+a.score+'/100</b> · '+esc(a.category)+'</p><p class="dim">Предварительная оценка по данным Quest, не автоматическая проверка сайта. Балл отражает пригодность для outreach, а не вероятность сделки.</p><b>Основания:</b><ul>'+a.signals.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul><b>Что нужно проверить:</b><ul>'+a.questions.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul><button class="secondary" id="copyCompanyResearch">📋 Скопировать запрос для AI-исследования</button></div>';
 }
-function openCompany(id){let x=cache.companies.find(c=>c.id===id);if(!x)return;const e=$('companyDetail');e.classList.remove('hidden');let matches=cache.contacts.filter(c=>(c.employer||'').trim().toLowerCase()===x.name.trim().toLowerCase());e.innerHTML='<div class="row"><h2>'+esc(x.name)+'</h2><button class="secondary" id="closeDetail">✕</button></div><p><b>Тип:</b> '+esc(x.company_type||'Проверить')+'</p><p><b>Описание:</b> '+esc(x.evidence||'Нет описания')+'</p><p><b>Форматы:</b> '+esc(x.formats||'Неизвестно')+'</p><p><b>GEO / CIS:</b> '+esc(x.geo_interest||'Спрос не подтверждён')+'</p><p><b>Приоритет:</b> '+esc(x.priority||'P2')+' · <b>Статус:</b> '+esc(x.status||'Research')+'</p>'+(x.website?'<p><a href="'+esc(x.website)+'" target="_blank" rel="noopener noreferrer">Сайт ↗</a></p>':'')+'<h3>Контакты ('+matches.length+')</h3>'+(matches.length?matches.slice(0,25).map(c=>'<div class="item"><a href="'+esc(linkedinTarget(c))+'" target="_blank" rel="noopener noreferrer" style="font-weight:700;text-decoration:underline;color:#9ac7ff">'+esc(c.full_name)+'</a> · '+esc(c.title||'') +chatAction(c)+'</div>').join(''):'<p class="dim">Прямых контактов с точным совпадением компании пока не найдено.</p>')+'<label>Статус работы<select id="detailStatus"><option>Research</option><option>Qualified</option><option>Contacted</option><option>Negotiation</option><option>Testing</option><option>Partner</option></select></label><button id="saveCompanyStatus">Сохранить статус</button>';e.insertAdjacentHTML('afterbegin',analysisPanel(x)+bidsterNote(x.name));$('copyCompanyResearch').onclick=()=>{const a=evaluateCompany(x);navigator.clipboard.writeText(analysisResearchPrompt(x,a)).then(()=>note('Запрос скопирован — вставь его в ChatGPT')).catch(()=>note('Не удалось скопировать',true));}; $('detailStatus').value=['Research','Qualified','Contacted','Negotiation','Testing','Partner'].includes(x.status)?x.status:'Research';$('closeDetail').onclick=()=>e.classList.add('hidden');$('saveCompanyStatus').onclick=async()=>{await update('companies',id,{status:$('detailStatus').value});note('Статус сохранён')};try{addCompanyCrmPanel(x)}catch(err){note('CRM: '+err.message,true)}e.scrollIntoView({behavior:'smooth',block:'start'});}
+
+function researchEditor(c){
+ return '<div class="item" style="border:1px solid #436087;border-radius:12px;padding:13px;margin:10px 0"><h3>🔎 Проверенное исследование</h3><p class="dim">Здесь сохраняются выводы и ссылки на публичные источники. AI-скоринг выше — предварительный и не заменяет проверку.</p><p id="researchState" class="dim">Загрузка сохранённого исследования…</p><label>Классификация<select id="researchVerdict"><option value="needs_review">Нужна проверка</option><option value="direct_buyer">Прямой DSP / buy-side</option><option value="agency">Агентство / trading desk</option><option value="intermediary">Посредник / reseller</option><option value="supply_side">SSP / supply-side</option><option value="not_fit">Не подходит</option></select></label><label>Вывод / подтверждённые факты<textarea id="researchSummary" placeholder="Как работает компания и что подтверждено"></textarea></label><label>Ссылки на источники (по одной на строку)<textarea id="researchSources" placeholder="https://example.com/..."></textarea></label><label>Следующий шаг<textarea id="researchNext" placeholder="Кому написать и что уточнить"></textarea></label><button id="saveResearch">💾 Сохранить исследование</button><button class="secondary" id="openResearchSearch">🌐 Найти публичные источники</button></div>';
+}
+async function loadResearch(c){
+ const out=$('researchState');
+ const {data,error}=await db.from('company_research').select('*').eq('company_id',c.id).maybeSingle();
+ if(!$('researchState'))return;
+ if(error){out.textContent='Нужна SQL-миграция 004: '+error.message;return;}
+ if(data){
+  $('researchVerdict').value=data.verdict;
+  $('researchSummary').value=data.summary||'';
+  $('researchSources').value=data.sources||'';
+  $('researchNext').value=data.next_step||'';
+  out.textContent='Сохранено '+new Date(data.verified_at).toLocaleDateString()+'. Запись команды, не автоматическая проверка.';
+ }else out.textContent='Исследование пока не сохранено.';
+}
+function bindResearch(c){
+ $('saveResearch').onclick=async()=>{
+  const btn=$('saveResearch');btn.disabled=true;
+  try{
+   const payload={company_id:c.id,verdict:$('researchVerdict').value,summary:$('researchSummary').value.trim(),sources:$('researchSources').value.trim(),next_step:$('researchNext').value.trim(),updated_by:user.id,verified_at:new Date().toISOString()};
+   const result=await db.from('company_research').upsert(payload,{onConflict:'company_id'});
+   if(result.error)throw Error(result.error.message);
+   $('researchState').textContent='Сохранено в общей CRM · '+new Date().toLocaleString();
+  }catch(e){$('researchState').textContent='Не сохранено: '+e.message;}
+  finally{btn.disabled=false;}
+ };
+ $('openResearchSearch').onclick=()=>{
+  const query=c.name+' DSP programmatic advertising OpenRTB VAST demand partners';
+  window.open('https://www.google.com/search?q='+encodeURIComponent(query),'_blank','noopener');
+ };
+ loadResearch(c);
+}
+function openCompany(id){let x=cache.companies.find(c=>c.id===id);if(!x)return;const e=$('companyDetail');e.classList.remove('hidden');let matches=cache.contacts.filter(c=>(c.employer||'').trim().toLowerCase()===x.name.trim().toLowerCase());e.innerHTML='<div class="row"><h2>'+esc(x.name)+'</h2><button class="secondary" id="closeDetail">✕</button></div><p><b>Тип:</b> '+esc(x.company_type||'Проверить')+'</p><p><b>Описание:</b> '+esc(x.evidence||'Нет описания')+'</p><p><b>Форматы:</b> '+esc(x.formats||'Неизвестно')+'</p><p><b>GEO / CIS:</b> '+esc(x.geo_interest||'Спрос не подтверждён')+'</p><p><b>Приоритет:</b> '+esc(x.priority||'P2')+' · <b>Статус:</b> '+esc(x.status||'Research')+'</p>'+(x.website?'<p><a href="'+esc(x.website)+'" target="_blank" rel="noopener noreferrer">Сайт ↗</a></p>':'')+'<h3>Контакты ('+matches.length+')</h3>'+(matches.length?matches.slice(0,25).map(c=>'<div class="item"><a href="'+esc(linkedinTarget(c))+'" target="_blank" rel="noopener noreferrer" style="font-weight:700;text-decoration:underline;color:#9ac7ff">'+esc(c.full_name)+'</a> · '+esc(c.title||'') +chatAction(c)+'</div>').join(''):'<p class="dim">Прямых контактов с точным совпадением компании пока не найдено.</p>')+'<label>Статус работы<select id="detailStatus"><option>Research</option><option>Qualified</option><option>Contacted</option><option>Negotiation</option><option>Testing</option><option>Partner</option></select></label><button id="saveCompanyStatus">Сохранить статус</button>';e.insertAdjacentHTML('afterbegin',analysisPanel(x)+researchEditor(x)+bidsterNote(x.name));$('copyCompanyResearch').onclick=()=>{const a=evaluateCompany(x);navigator.clipboard.writeText(analysisResearchPrompt(x,a)).then(()=>note('Запрос скопирован — вставь его в ChatGPT')).catch(()=>note('Не удалось скопировать',true));}; $('detailStatus').value=['Research','Qualified','Contacted','Negotiation','Testing','Partner'].includes(x.status)?x.status:'Research';$('closeDetail').onclick=()=>e.classList.add('hidden');$('saveCompanyStatus').onclick=async()=>{await update('companies',id,{status:$('detailStatus').value});note('Статус сохранён')};bindResearch(x);try{addCompanyCrmPanel(x)}catch(err){note('CRM: '+err.message,true)}e.scrollIntoView({behavior:'smooth',block:'start'});}
 
 const crmToday=()=>new Date().toISOString().slice(0,10);
 function crmTasks(companyId){return (cache.tasks||[]).filter(t=>t.company_id===companyId);}
