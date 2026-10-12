@@ -20,7 +20,7 @@ $('translate').onclick=async()=>{
   $('target').value=await translator.translate(text);
   if(translator.destroy)translator.destroy();
   $('status').textContent='✓ Переведено локально в браузере. Проверь текст перед отправкой.';
- }catch(e){$('status').textContent='Встроенный перевод недоступен ('+e.message+'). Открываем Google Translate в новой вкладке.';window.open(googleLink(),'_blank','noopener,noreferrer');}
+ }catch(e){$('status').textContent='Автономный перевод в этом браузере недоступен: '+e.message+'. Текст остаётся здесь. Для перевода внутри Quest потребуется подключить серверный переводчик.';}
  finally{button.disabled=false;}
 };
 </script></body></html>
