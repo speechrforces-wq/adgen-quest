@@ -5,7 +5,7 @@
 <section id="login" class="card hidden"><h2>Вход</h2><label>Email<input id="email" type="email" autocomplete="username"></label><label>Пароль<input id="password" type="password" autocomplete="current-password"></label><button id="signin">Войти</button><button class="secondary" id="changeConfig">Настройки подключения</button><p class="dim">Пока доступен аккаунт Александра. Андрея подключим позже.</p></section>
 <section id="app" class="hidden"><div class="box"><div class="stat"><small>Компании</small><strong id="countCompanies">—</strong></div><div class="stat"><small>Контакты (загружено)</small><strong id="countContacts">—</strong></div><div class="stat"><small>Задачи</small><strong id="countTasks">—</strong></div></div>
 <div class="card" style="padding:12px;margin:12px 0"><label for="mobilePage" style="margin:0 0 6px">Раздел приложения</label><select id="mobilePage" aria-label="Выбрать раздел"><option value="companies">📚 Компании</option><option value="contacts">👥 Контакты</option><option value="tasks">✅ Задачи</option><option value="posts">✍️ Посты</option><option value="messages">💬 Чат</option><option value="import">📥 Импорт базы</option></select><button id="quickImport" style="display:block;width:100%;margin-top:12px;background:#15a67a">📥 Импортировать компании и LinkedIn</button></div><div class="card" style="padding:12px"><button id="checkDbContacts" style="width:100%">🔎 Проверить контакты в Supabase</button><p id="dbContactsDiagnostic" class="dim" style="margin:8px 0 0">Покажет точное число записей в базе и загруженных в приложение.</p></div><nav class="tabs" id="tabs"><button class="active" data-page="companies">📚 Компании</button><button data-page="contacts">👥 Контакты</button><button data-page="tasks">✅ Задачи</button><button data-page="posts">✍️ Посты</button><button data-page="messages">💬 Чат</button><button data-page="import">📥 Импорт</button></nav>
-<section id="page-companies" class="card"><h2>Библия буржуев</h2><input id="companySearch" placeholder="Поиск компании"><button id="enrichCompanies" class="secondary" style="margin-top:10px;width:100%">✨ Заполнить описания компаний</button><p class="dim" id="enrichStatus">Краткие профили, форматы и вопросы для квалификации. Непроверенные сведения обозначаются отдельно.</p><div id="companiesList"></div><div id="companyDetail" class="card hidden" style="border-color:#638fe8"></div><h3>Новая компания</h3><label>Компания<input id="companyName"></label><label>Сайт<input id="companyWebsite"></label><label>Приоритет<select id="companyPriority"><option>P1</option><option selected>P2</option><option>P3</option></select></label><button id="addCompany">Добавить</button></section>
+<section id="page-companies" class="card"><h2>Библия буржуев</h2><input id="companySearch" placeholder="Поиск компании"><button id="discoverFromContacts" style="width:100%;margin-top:10px;background:#0c9373">🔎 Найти компании среди моих LinkedIn-контактов</button><p class="dim" id="discoverStatus">Добавляет только компании, похожие на programmatic / DSP / advertising / media buying. Существующие компании не дублируются.</p><button id="enrichCompanies" class="secondary" style="margin-top:10px;width:100%">✨ Заполнить описания компаний</button><p class="dim" id="enrichStatus">Краткие профили, форматы и вопросы для квалификации. Непроверенные сведения обозначаются отдельно.</p><div id="companiesList"></div><div id="companyDetail" class="card hidden" style="border-color:#638fe8"></div><h3>Новая компания</h3><label>Компания<input id="companyName"></label><label>Сайт<input id="companyWebsite"></label><label>Приоритет<select id="companyPriority"><option>P1</option><option selected>P2</option><option>P3</option></select></label><button id="addCompany">Добавить</button></section>
 <section id="page-contacts" class="card hidden"><h2>LinkedIn CRM</h2><p class="dim">Контакты появятся после импорта LinkedIn ZIP/CSV. Ты также можешь добавлять людей вручную. Для импорта открой раздел «📥 Импорт базы».</p><button class="secondary" id="fromContactsImport" onclick="document.getElementById('quickImport').click()">📥 Перейти к импорту LinkedIn</button><input id="contactSearch" placeholder="Найти контакт"><div id="contactsList"></div><label>Имя<input id="contactName"></label><label>Должность<input id="contactTitle"></label><label>Компания<input id="contactEmployer"></label><label>Ссылка LinkedIn<input id="contactUrl"></label><button id="addContact">Добавить контакт</button></section>
 <section id="page-tasks" class="card hidden"><h2>Задачи</h2><p class="dim">Создай задачу для себя сейчас; после подключения Андрея появится возможность назначать её ему.</p><div id="tasksList"></div><label>Задача<input id="taskTitle"></label><label>Детали<textarea id="taskBody"></textarea></label><button id="addTask">Создать задачу</button></section>
 <section id="page-posts" class="card hidden"><h2>Редакция постов</h2><p class="dim">Сохраняй идеи постов и меняй статус согласования. Публикация в LinkedIn пока выполняется вручную.</p><div id="postsList"></div><label>Тема<input id="postTitle"></label><label>Текст<textarea id="postBody"></textarea></label><button id="addPost">Сохранить идею</button></section>
@@ -109,6 +109,39 @@ $('enrichCompanies').onclick=async()=>{
   status.textContent='Обработано '+(i+batch.length)+' из '+rows.length+' · Успешно '+done+' · Ошибок '+errors;
  }
  btn.disabled=false;await refresh();status.textContent='Готово: обновлено '+done+' компаний'+(errors?'; ошибок '+errors:'')+'. Непроверенные профили помечены.';
+};
+
+
+const prospectCompanySignals=/\b(adtech|ad tech|ads|advertis|programmatic|dsp|ssp|rtb|exchange|media|marketing|monetiz|publisher|digital|video|performance|trading|affiliate|bid|yield|revenue|traffic|adops|ad operations)\b/i;
+const prospectRoleSignals=/programmatic|demand|supply|monetiz|publisher|media buyer|media buying|RTB|DSP|SSP|ad.?tech|ad.?operations|ad.?exchange|performance marketing|traffic acquisition|partner(ship)?s|revenue operations/i;
+const excludedNonTarget=/^(orica|tinkoff|the walt disney company|google|nda|freelance|aut[oó]nomo|self employed|freelance \| self-employed|polyus|agrobank|okta|pedidosya|avito ru|buhler-ahs|kia uzbekistan)$/i;
+function isBusinessInterestContact(c){
+ const company=(c.employer||'').trim(), role=(c.title||'').trim();
+ if(!company||excludedNonTarget.test(company))return false;
+ return prospectCompanySignals.test(company) || (prospectRoleSignals.test(role)&&/agency|media|marketing|digital|ads|advertis|programmatic|adtech/i.test(company));
+}
+$('discoverFromContacts').onclick=async()=>{
+ const label=$('discoverStatus'),button=$('discoverFromContacts');
+ const all=cache.contacts||[];
+ if(!all.length){label.textContent='Контактов пока нет. Сначала импортируй LinkedIn ZIP во вкладке «Импорт».';return;}
+ const known=new Set((cache.companies||[]).map(x=>x.name.trim().toLowerCase()));
+ const group=new Map();
+ all.filter(isBusinessInterestContact).forEach(c=>{
+   let n=c.employer.trim(), k=n.toLowerCase(); if(known.has(k))return;
+   if(!group.has(k))group.set(k,{name:n,people:[]});group.get(k).people.push(c);
+ });
+ const candidates=[...group.values()].sort((a,b)=>b.people.length-a.people.length);
+ if(!candidates.length){label.textContent='Новых компаний по предварительным критериям не найдено.';return;}
+ const yes=confirm('Найдено '+candidates.length+' потенциально релевантных компаний, которых нет в базе. Добавить их с пометкой «требует проверки»?');
+ if(!yes)return;
+ button.disabled=true;let count=0,failed=0;
+ for(let i=0;i<candidates.length;i+=20){
+   let batch=candidates.slice(i,i+20).map(g=>({name:g.name,company_type:'Programmatic / advertising candidate — проверить',status:'Research',priority:g.people.some(p=>prospectRoleSignals.test(p.title||''))?'P2':'P3',evidence:'Добавлено из связей LinkedIn. Есть '+g.people.length+' прямых контактов; направление деятельности, возможность закупать Web Display/Video и CIS спрос требуют независимой проверки.',formats:'Web Display / Video — проверить',geo_interest:'CIS demand не подтверждён'}));
+   const {error}=await db.from('companies').insert(batch);
+   if(error){failed+=batch.length;label.textContent='Ошибка загрузки: '+error.message;break;}count+=batch.length;label.textContent='Добавлено '+count+' / '+candidates.length;
+ }
+ button.disabled=false;await refresh();
+ label.textContent='Добавлено '+count+' компаний из LinkedIn-контактов'+(failed?' · ошибок '+failed:'')+'. Сотрудники будут показаны в карточках по совпадению названия компании.';
 };
 
 function navigate(page){document.querySelectorAll('#tabs button').forEach(z=>z.classList.toggle('active',z.dataset.page===page));['companies','contacts','tasks','posts','messages','import'].forEach(z=>$('page-'+z).classList.toggle('hidden',z!==page));$('mobilePage').value=page;} $('mobilePage').onchange=()=>navigate($('mobilePage').value);$('quickImport').onclick=()=>{navigate('import');$('page-import').scrollIntoView({behavior:'smooth',block:'start'});};document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{navigate(b.dataset.page)});
