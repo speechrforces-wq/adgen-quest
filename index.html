@@ -94,7 +94,7 @@ async function viewConversation(contactId){
  }
  if(error){box.innerHTML='<h3>'+esc(c.full_name)+'</h3><p class="error">'+esc(error.message)+'</p><p class="dim">Если таблица отсутствует, выполни миграцию 002.</p>';return;}
  box.innerHTML='<div class="row"><h3>💬 '+esc(c.full_name)+'</h3><button class="secondary" id="closeConversation">✕</button></div><p class="dim">'+data.length+' сообщений. '+(profile?'Сопоставление по LinkedIn URL; при отсутствии — по имени.':'По имени: проверь, что это нужный человек.')+'</p>'+
- (data.length?data.map(m=>'<div class="item"><small>'+esc(m.sender)+' · '+esc(m.sent_at?new Date(m.sent_at).toLocaleString():'без даты')+'</small><p class="draft">'+esc(m.body)+'</p></div>').join(''):'<p class="dim">В импортированном архиве переписка не найдена. Это не доказывает, что её не было.</p>');
+ (data.length?data.map(m=>'<div class="item"><small>'+esc(m.sender)+' · '+esc(m.sent_at?new Date(m.sent_at).toLocaleString():'без даты')+'</small><p class="draft">'+esc(m.body)+'</p></div>').join(''):'<p class="dim">Переписка не начата или отсутствует в загруженной истории LinkedIn.</p>');
  $('closeConversation').onclick=()=>box.classList.add('hidden');
 }
 function linkedinTarget(c){const u=(c.linkedin_url||'').trim();return /^https:\/\/(www\.)?linkedin\.com\//i.test(u)?u:'https://www.linkedin.com/search/results/people/?keywords='+encodeURIComponent([c.full_name,c.employer].filter(Boolean).join(' '));}
