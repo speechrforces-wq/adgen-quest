@@ -45,7 +45,28 @@ async function uniqueInsert(table,items,keyOf){let existing=await query(table);l
 const namekey=x=>(x.full_name||'').trim().toLowerCase()+'|'+(x.employer||'').trim().toLowerCase();
 $('seedCompanies').onclick=async()=>{try{let count=await uniqueInsert('companies',SEED_COMPANIES.map(name=>({name,priority:'P2',status:'Research'})),x=>x.name.toLowerCase());$('importFeedback').textContent='Добавлено компаний: '+count;await refresh()}catch(e){note(e.message,true)}};
 $('importCompanies').onclick=async()=>{let f=$('companiesFile').files[0];if(!f)return note('Сначала выбери CSV',true);try{let a=rowsAsObjects(await f.text()).map(x=>({name:x.company||x.name,website:x.website||null,country:x.country||null,company_type:x.type||null,priority:x.priority||'P2'})).filter(x=>x.name);let count=await uniqueInsert('companies',a,x=>x.name.trim().toLowerCase());$('importFeedback').textContent='Импортировано компаний: '+count;await refresh()}catch(e){note(e.message,true)}};
-$('importContacts').onclick=async()=>{let f=$('linkedinFile').files[0];if(!f)return note('Выбери CSV или ZIP',true);$('importFeedback').textContent='Читаем файл…';try{let txt;if(f.name.toLowerCase().endsWith('.zip')){if(!window.JSZip)throw Error('Библиотека ZIP не загрузилась');let zip=await JSZip.loadAsync(f);let names=Object.keys(zip.files);let fileName=names.find(n=>/(^|\/)connections\.csv$/i.test(n));if(!fileName)throw Error('В ZIP не найден Connections.csv');txt=await zip.files[fileName].async('string')}else txt=await f.text();let a=rowsAsObjects(txt).map(x=>({full_name:(x['first name']||'')+' '+(x['last name']||'')).trim()||x['full name'],employer:x.company||null,title:x.position||x.title||null,linkedin_url:x.url||x['profile url']||null,relationship:'Connected',source:'LinkedIn upload '+new Date().toISOString().slice(0,10)})).filter(x=>x.full_name);let count=await uniqueInsert('contacts',a,namekey);$('importFeedback').textContent='Готово: '+count+' новых контактов из '+a.length+'.';await refresh()}catch(e){note(e.message,true);$('importFeedback').textContent='Ошибка импорта: '+e.message}};
+$('importContacts').onclick=async function () {
+ const file=$('linkedinFile').files[0];
+ if(!file){note('Выбери CSV или ZIP',true);return;}
+ try {
+   let csv='';
+   if(file.name.toLowerCase().endsWith('.zip')){
+     if(!window.JSZip)throw new Error('ZIP reader unavailable');
+     const zip=await JSZip.loadAsync(file);
+     const name=Object.keys(zip.files).find(x=>x.toLowerCase().endsWith('connections.csv'));
+     if(!name)throw new Error('Connections.csv missing');
+     csv=await zip.files[name].async('string');
+   }else{csv=await file.text();}
+   const records=rowsAsObjects(csv);
+   const contacts=records.map(x=>{
+     const full=((x['first name']||'')+' '+(x['last name']||'')).trim() || x['full name'];
+     return {full_name:full,employer:x.company||null,title:x.position||null,linkedin_url:x.url||null,relationship:'Connected',source:'LinkedIn uploaded'};
+   }).filter(x=>x.full_name);
+   const count=await uniqueInsert('contacts',contacts,namekey);
+   $('importFeedback').textContent='Добавлено '+count+' из '+contacts.length;
+   await refresh();
+ }catch(e){note(e.message,true);$('importFeedback').textContent='Ошибка: '+e.message;}
+};
 
 function navigate(page){document.querySelectorAll('#tabs button').forEach(z=>z.classList.toggle('active',z.dataset.page===page));['companies','contacts','tasks','posts','messages','import'].forEach(z=>$('page-'+z).classList.toggle('hidden',z!==page));$('mobilePage').value=page;} $('mobilePage').onchange=()=>navigate($('mobilePage').value);$('quickImport').onclick=()=>{navigate('import');$('page-import').scrollIntoView({behavior:'smooth',block:'start'});};document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{navigate(b.dataset.page)});
 (async()=>{if(!init())return;let{data,error}=await db.auth.getSession();if(error){note('Ошибка восстановления сессии: '+error.message,true)}if(data?.session){user=data.session.user;await launch()}else show('login')})();})();
