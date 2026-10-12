@@ -162,12 +162,52 @@ function duplicateAudit(){
 }
 $('auditDuplicates').onclick=()=>{
  const groups=duplicateAudit(),el=$('duplicateReport');el.classList.remove('hidden');
- const confident=groups.filter(g=>g.confident),ambiguous=groups.filter(g=>!g.confident);
- el.innerHTML='<h3>Проверка повторов</h3><p>Групп совпадений: '+groups.length+'. Совпадения по профилю или имени/компании/должности: '+confident.length+'. Неоднозначные: '+ambiguous.length+'.</p><p class="dim">Проверка не удаляет записи автоматически. Одинаковое имя без подтверждения личности недостаточно для удаления.</p>'+
- groups.slice(0,120).map(g=>'<div class="item"><b>'+esc(g.items[0].full_name)+'</b> · '+esc(g.items[0].employer||'')+' — '+g.items.length+' записей · '+(g.confident?'вероятный дубль':'нужна ручная проверка')+'<div class="dim">'+g.items.map(x=>esc(x.title||'')+(x.linkedin_url?' · '+esc(x.linkedin_url):'')).join(' | ')+'</div></div>').join('');
+ const certain=duplicateCleanupPlan();
+ el.innerHTML='<h3>Проверка дубликатов</h3><p>Групп вероятных совпадений: '+groups.length+'. Строго подходящих к удалению записей: '+certain.length+'.</p><button id="deleteVerified" style="width:100%;background:#a84043">Удалить подтверждённые дубликаты</button><p class="dim" id="deleteProgress">Оставим по одной записи на человека. Неоднозначные совпадения сохраняются.</p>'+
+ groups.slice(0,100).map(g=>'<div class="item"><b>'+esc(g.items[0].full_name)+'</b> · '+esc(g.items[0].employer||'')+' — '+g.items.length+' записей</div>').join('');
+ $('deleteVerified').onclick=deleteVerifiedDuplicates;
  el.scrollIntoView({behavior:'smooth',block:'start'});
 };
 
+
+function duplicateCleanupPlan(){
+ const removal=[];
+ for(const group of duplicateAudit()){
+  const rows=group.items;
+  const urls=[...new Set(rows.map(r=>normalizeProfile(r.linkedin_url)).filter(Boolean))];
+  const names=[...new Set(rows.map(r=>normalizeIdentity(r.full_name)))];
+  const employers=[...new Set(rows.map(r=>normalizeIdentity(r.employer)))];
+  const titles=[...new Set(rows.map(r=>normalizeIdentity(r.title)))];
+  const verifiedUrl=urls.length===1&&urls[0].includes('linkedin.com/in/')&&names.length===1;
+  const verifiedFields=urls.length===0&&names.length===1&&employers.length===1&&titles.length===1&&titles[0].length>0;
+  if(!verifiedUrl&&!verifiedFields)continue;
+  const sorted=rows.slice().sort((a,b)=>
+   Number(!!b.linkedin_url)-Number(!!a.linkedin_url) ||
+   Number(!!b.title)-Number(!!a.title) ||
+   String(a.created_at||'').localeCompare(String(b.created_at||''))
+  );
+  removal.push(...sorted.slice(1).map(x=>x.id));
+ }
+ return [...new Set(removal.filter(Boolean))];
+}
+async function deleteVerifiedDuplicates(){
+ const ids=duplicateCleanupPlan(),report=$('deleteProgress');
+ if(!ids.length){report.textContent='Безопасных повторов для удаления не найдено.';return;}
+ if(!confirm('Найдено '+ids.length+' повторных записей. Оставим одну запись каждой группы. Продолжить?'))return;
+ if(!confirm('Удалить '+ids.length+' записей из Supabase? В приложении нет кнопки отмены.'))return;
+ $('deleteVerified').disabled=true;let removed=0;
+ try{
+  for(let i=0;i<ids.length;i+=50){
+   const {data,error}=await db.from('contacts').delete().in('id',ids.slice(i,i+50)).select('id');
+   if(error)throw error;
+   removed+=(data||[]).length;
+   report.textContent='Удалено '+removed+' из '+ids.length;
+  }
+  await refresh();
+  report.textContent='Удалено '+removed+' подтверждённых повторов. Остальные контакты сохранены.';
+ }catch(e){report.textContent='Ошибка: '+e.message+'; удалено '+removed;}
+ finally{$('deleteVerified').disabled=false}
+}
 function navigate(page){document.querySelectorAll('#tabs button').forEach(z=>z.classList.toggle('active',z.dataset.page===page));['companies','contacts','tasks','posts','messages','import'].forEach(z=>$('page-'+z).classList.toggle('hidden',z!==page));$('mobilePage').value=page;} $('mobilePage').onchange=()=>navigate($('mobilePage').value);$('quickCompanies').onclick=()=>{navigate('companies');$('page-companies').scrollIntoView({behavior:'smooth',block:'start'});};$('quickImport').onclick=()=>{navigate('import');$('page-import').scrollIntoView({behavior:'smooth',block:'start'});};document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{navigate(b.dataset.page)});
 (async()=>{if(!init())return;let{data,error}=await db.auth.getSession();if(error){note('Ошибка восстановления сессии: '+error.message,true)}if(data?.session){user=data.session.user;await launch()}else show('login')})();})();
 </script></body></html>
